@@ -43,7 +43,7 @@ export default class Camera {
   /**
    * This is used to discard change events on view caused by updateView method.
    */
-  private eventIgnoreCounter_ = 0;
+  private viewUpdateInProgress_ = false;
 
   /**
    * This object takes care of additional 3d-specific properties of the view and
@@ -91,11 +91,9 @@ export default class Camera {
   }
 
   private handleViewChangedEvent_() {
-    if (this.eventIgnoreCounter_ > 0) {
-      --this.eventIgnoreCounter_;
-      return;
+    if (!this.viewUpdateInProgress_) {
+      this.readFromView();
     }
-    this.readFromView();
   }
 
   /**
@@ -309,6 +307,7 @@ export default class Camera {
     if (!this.view_ || !this.fromLonLat_) {
       return;
     }
+    this.viewUpdateInProgress_ = true;
 
     // target & distance
     const ellipsoid = Cesium.Ellipsoid.WGS84;
@@ -326,10 +325,14 @@ export default class Camera {
     }
     this.distance_ = Cesium.Cartesian3.distance(bestTarget, this.cam_.position);
     const bestTargetCartographic = ellipsoid.cartesianToCartographic(bestTarget);
-    ++this.eventIgnoreCounter_;
     this.view_.setCenter(this.fromLonLat_([
       toDegrees(bestTargetCartographic.longitude),
       toDegrees(bestTargetCartographic.latitude)]));
+
+    // resolution
+    this.view_.setResolution(
+        this.calcResolutionForDistance(this.distance_,
+            bestTargetCartographic ? bestTargetCartographic.latitude : 0));
 
 
     /*
@@ -357,7 +360,6 @@ export default class Camera {
       const cross = Cesium.Cartesian3.cross(target, up, new Cesium.Cartesian3());
       const orientation = cross.z;
 
-      ++this.eventIgnoreCounter_;
       this.view_.setRotation((orientation < 0 ? heading : -heading));
 
       // TILT
@@ -370,11 +372,7 @@ export default class Camera {
       this.tilt_ = -this.cam_.pitch + Math.PI / 2;
     }
 
-    // resolution
-    this.eventIgnoreCounter_ += 2; // resolution event plus the center event triggered by the resolution change
-    this.view_.setResolution(
-        this.calcResolutionForDistance(
-            this.distance_, bestTargetCartographic ? bestTargetCartographic.latitude : 0));
+    setTimeout(() => this.viewUpdateInProgress_ = false, 1000);
   }
 
   /**
